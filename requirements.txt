@@ -1,0 +1,28 @@
+# W2V-BERT 2.0 Training Dependencies
+# Install with: pip install -r requirements.txt
+
+# Core ML frameworks
+torch>=2.1.0           # match HF transformers PyTorch requirement
+torchaudio>=2.1.0      # keep in sync with torch major.minor
+
+# HuggingFace libraries
+transformers>=4.57.3
+datasets[audio]>=4.4.1
+accelerate>=1.12.0
+
+# Evaluation metrics
+evaluate>=0.4.0
+jiwer>=3.0.0
+
+# Experiment tracking
+wandb>=0.22.0
+
+# Audio processing
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# Utilities
+numpy>=1.24.0
+pandas>=2.0.0
+regex
+python-dotenv
