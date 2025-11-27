@@ -63,6 +63,11 @@ class DataCollatorCTCWithPadding:
 def clean_text(text: str) -> str:
     """Clean and normalize text"""
     text = text.lower()
+    # Remove filler/noise tags like [?], [cs], [um], [pause]
+    tags_to_remove = [r'\[\?\]', r'\[cs\]', r'\[um\]', r'\[pause\]']
+    combined_pattern = '|'.join(tags_to_remove)
+    text = re.sub(combined_pattern, ' ', text, flags=re.IGNORECASE)
+    # Remove punctuation and special characters
     text = re.sub(r'[,?.!;\:"\'\u00bb\u00ab\[\]\(\)%-]', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
