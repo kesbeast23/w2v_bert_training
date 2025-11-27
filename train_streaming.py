@@ -62,7 +62,9 @@ class DataCollatorCTCWithPadding:
 
 def clean_text(text: str) -> str:
     """Clean and normalize text"""
-    text = text.lower()
+    if text is None:
+        return ""
+    text = str(text).lower()
     # Remove filler/noise tags like [?], [cs], [um], [pause]
     tags_to_remove = [r'\[\?\]', r'\[cs\]', r'\[um\]', r'\[pause\]']
     combined_pattern = '|'.join(tags_to_remove)
@@ -252,9 +254,17 @@ def main():
         return (duration >= cfg.get("min_duration_in_seconds", 0.5) and 
                 duration <= cfg.get("max_duration_in_seconds", 30.0))
     
-    # Apply preprocessing
-    train_dataset = raw_train.filter(filter_by_duration).map(prepare_dataset, remove_columns=raw_train.column_names)
-    eval_dataset = raw_eval.filter(filter_by_duration).map(prepare_dataset, remove_columns=raw_eval.column_names)
+    def filter_valid_text(batch):
+        """Filter out samples with None/empty text"""
+        text_col = cfg.get("text_column_name", "transcript")
+        text = batch.get(text_col)
+        if text is None or str(text).strip() == "":
+            return False
+        return True
+    
+    # Apply preprocessing - filter invalid text first, then duration, then prepare
+    train_dataset = raw_train.filter(filter_valid_text).filter(filter_by_duration).map(prepare_dataset, remove_columns=raw_train.column_names)
+    eval_dataset = raw_eval.filter(filter_valid_text).filter(filter_by_duration).map(prepare_dataset, remove_columns=raw_eval.column_names)
     
     # Load model with custom config
     from transformers import AutoConfig
