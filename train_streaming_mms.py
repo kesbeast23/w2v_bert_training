@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Union, Optional
 import json
 import sys
+import tempfile
 
 # CRITICAL: Disable torchcodec audio backend  
 os.environ["DATASETS_AUDIO_BACKEND"] = "soundfile"
@@ -27,8 +28,8 @@ from datasets import load_dataset, Audio, interleave_datasets
 from transformers import (
     Wav2Vec2ForCTC,
     Wav2Vec2Processor,
-    AutoFeatureExtractor,
-    AutoTokenizer,
+    Wav2Vec2FeatureExtractor,
+    Wav2Vec2CTCTokenizer,
     TrainingArguments,
     Trainer,
     set_seed
@@ -84,6 +85,46 @@ def clean_text(text: str) -> str:
     return text
 
 
+def extract_vocabulary_from_dataset(dataset, text_column: str, num_samples: int = 3000) -> Dict[str, int]:
+    """Extract vocabulary from dataset transcriptions"""
+    print(f"Extracting vocabulary from up to {num_samples} samples...")
+    
+    all_text = []
+    count = 0
+    for sample in dataset:
+        text = sample.get(text_column)
+        if text:
+            cleaned = clean_text(text)
+            if cleaned:
+                all_text.append(cleaned)
+                count += 1
+                if count >= num_samples:
+                    break
+    
+    # Get all unique characters
+    all_chars = set()
+    for text in all_text:
+        all_chars.update(set(text))
+    
+    # Build vocabulary
+    vocab_list = sorted(list(all_chars))
+    vocab_dict = {char: idx for idx, char in enumerate(vocab_list)}
+    
+    # Replace space with | for visibility
+    if " " in vocab_dict:
+        vocab_dict["|"] = vocab_dict[" "]
+        del vocab_dict[" "]
+    
+    # Add special tokens
+    vocab_dict["[UNK]"] = len(vocab_dict)
+    vocab_dict["[PAD]"] = len(vocab_dict)
+    
+    print(f"Vocabulary created with {len(vocab_dict)} tokens")
+    print(f"Characters: {sorted([c for c in vocab_dict.keys() if c not in ['[UNK]', '[PAD]', '|']])}")
+    
+    return vocab_dict
+
+
 # Language code mapping for MMS
 MMS_LANGUAGE_CODES = {
     "isizulu": "zul",
@@ -129,34 +170,7 @@ def main():
     target_language = cfg.get("target_language", "zul")  # MMS language code
     print(f"Training MMS adapter for language: {target_language}")
     
-    # Load MMS model and processor
-    model_name = cfg.get("model_name_or_path", "facebook/mms-1b-all")
-    print(f"Loading MMS model: {model_name}")
-    
-    # Load processor
-    processor = Wav2Vec2Processor.from_pretrained(model_name, token=hf_token)
-    
-    # Load model with adapter for target language
-    model = Wav2Vec2ForCTC.from_pretrained(
-        model_name,
-        token=hf_token,
-        target_lang=target_language,
-        ignore_mismatched_sizes=True,
-    )
-    
-    # Set target language to load correct adapter
-    model.load_adapter(target_language)
-    processor.tokenizer.set_target_lang(target_language)
-    
-    # Freeze base model, only train adapter
-    model.freeze_base_model()
-    
-    # Count trainable parameters
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f"Trainable parameters: {trainable_params:,} / {total_params:,} ({100*trainable_params/total_params:.2f}%)")
-    
-    # Load streaming datasets
+    # --- 1. Load Datasets First (Needed for Vocab) ---
     dataset_name = cfg['dataset_name']
     dataset_config_names = cfg['dataset_config_name']
     
@@ -207,7 +221,80 @@ def main():
         raw_eval = interleave_datasets(eval_datasets, seed=cfg.get("seed", 42))
     else:
         raw_eval = eval_datasets[0]
+
+    # --- 2. Create Vocabulary from Data ---
+    print("Creating vocabulary from dataset...")
+    # We sample from the interleaved dataset to ensure we get chars from all languages
+    vocab_dict = extract_vocabulary_from_dataset(
+        raw_train, 
+        cfg.get("text_column_name", "transcript"),
+        num_samples=cfg.get("vocab_train_samples", 3000)
+    )
     
+    # Create nested vocabulary dict (required for MMS tokenizer format)
+    nested_vocab = {target_language: vocab_dict}
+    
+    # Save vocabulary to temp file
+    vocab_dir = tempfile.mkdtemp()
+    vocab_file = os.path.join(vocab_dir, "vocab.json")
+    with open(vocab_file, 'w') as f:
+        json.dump(nested_vocab, f)
+        
+    # --- 3. Create Tokenizer & Processor ---
+    tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(
+        vocab_dir,
+        unk_token="[UNK]",
+        pad_token="[PAD]",
+        word_delimiter_token="|",
+        target_lang=target_language
+    )
+    
+    feature_extractor = Wav2Vec2FeatureExtractor(
+        feature_size=1,
+        sampling_rate=16000,
+        padding_value=0.0,
+        do_normalize=True,
+        return_attention_mask=True
+    )
+    
+    processor = Wav2Vec2Processor(feature_extractor=feature_extractor, tokenizer=tokenizer)
+    
+    # --- 4. Load Model & Init Adapter ---
+    model_name = cfg.get("model_name_or_path", "facebook/mms-1b-all")
+    print(f"Loading MMS model: {model_name}")
+    
+    model = Wav2Vec2ForCTC.from_pretrained(
+        model_name,
+        token=hf_token,
+        attention_dropout=0.0,
+        hidden_dropout=0.0,
+        feat_proj_dropout=0.0,
+        layerdrop=0.0,
+        ctc_loss_reduction="mean",
+        pad_token_id=tokenizer.pad_token_id,
+        vocab_size=len(tokenizer),
+        ignore_mismatched_sizes=True,
+        ctc_zero_infinity=True,
+    )
+    
+    # Initialize adapter layers (since we have a new vocab)
+    print("Initializing adapter layers...")
+    model.init_adapter_layers()
+    
+    # Freeze base model, only train adapter
+    model.freeze_base_model()
+    
+    # CRITICAL: Explicitly unfreeze adapter layers (as per blog post)
+    adapter_weights = model._get_adapters()
+    for param in adapter_weights.values():
+        param.requires_grad = True
+    
+    # Count trainable parameters
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f"Trainable parameters: {trainable_params:,} / {total_params:,} ({100*trainable_params/total_params:.2f}%)")
+    
+    # --- 5. Preprocessing ---
     # Cast audio to 16kHz
     print("Casting audio to 16kHz...")
     raw_train = raw_train.cast_column("audio", Audio(sampling_rate=16000))
