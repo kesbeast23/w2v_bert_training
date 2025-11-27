@@ -235,36 +235,44 @@ def main():
     raw_train = raw_train.cast_column("audio", Audio(sampling_rate=16000))
     raw_eval = raw_eval.cast_column("audio", Audio(sampling_rate=16000))
     
-    # Preprocessing functions
+    # Combined preprocessing function that handles filtering internally
+    # Returns a dict with a "valid" field to mark samples for filtering
     def prepare_dataset(batch):
+        # Check for valid text first
+        text_col = cfg.get("text_column_name", "transcript")
+        text = batch.get(text_col)
+        if text is None or str(text).strip() == "":
+            # Return minimal valid structure but mark as invalid
+            return {"input_features": [], "labels": [], "valid": False}
+        
+        text = clean_text(text)
+        if not text:  # If text becomes empty after cleaning
+            return {"input_features": [], "labels": [], "valid": False}
+        
         audio = batch["audio"]
-        text = clean_text(batch[cfg.get("text_column_name", "transcript")])
+        
+        # Check duration
+        duration = len(audio["array"]) / 16000
+        if duration < cfg.get("min_duration_in_seconds", 0.5) or duration > cfg.get("max_duration_in_seconds", 30.0):
+            return {"input_features": [], "labels": [], "valid": False}
         
         # W2V-BERT processor returns input_features, not input_values
-        batch["input_features"] = processor(
+        input_features = processor(
             audio["array"], 
             sampling_rate=audio["sampling_rate"]
         ).input_features[0]
         
-        batch["labels"] = processor.tokenizer(text).input_ids
-        return batch
+        labels = processor.tokenizer(text).input_ids
+        return {"input_features": input_features, "labels": labels, "valid": True}
     
-    def filter_by_duration(batch):
-        duration = len(batch["audio"]["array"]) / 16000
-        return (duration >= cfg.get("min_duration_in_seconds", 0.5) and 
-                duration <= cfg.get("max_duration_in_seconds", 30.0))
+    # Filter function to keep only valid samples
+    def filter_valid(batch):
+        return batch.get("valid", False)
     
-    def filter_valid_text(batch):
-        """Filter out samples with None/empty text"""
-        text_col = cfg.get("text_column_name", "transcript")
-        text = batch.get(text_col)
-        if text is None or str(text).strip() == "":
-            return False
-        return True
-    
-    # Apply preprocessing - filter invalid text first, then duration, then prepare
-    train_dataset = raw_train.filter(filter_valid_text).filter(filter_by_duration).map(prepare_dataset, remove_columns=raw_train.column_names)
-    eval_dataset = raw_eval.filter(filter_valid_text).filter(filter_by_duration).map(prepare_dataset, remove_columns=raw_eval.column_names)
+    # Apply preprocessing with map, then filter out invalid samples
+    print("Preprocessing datasets...")
+    train_dataset = raw_train.map(prepare_dataset, remove_columns=raw_train.column_names).filter(filter_valid).remove_columns(["valid"])
+    eval_dataset = raw_eval.map(prepare_dataset, remove_columns=raw_eval.column_names).filter(filter_valid).remove_columns(["valid"])
     
     # Load model with custom config
     from transformers import AutoConfig
