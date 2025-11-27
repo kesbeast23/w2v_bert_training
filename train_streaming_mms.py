@@ -239,9 +239,8 @@ def main():
             return_tensors="np"
         ).input_values[0]
         
-        # Tokenize text
-        with processor.as_target_processor():
-            labels = processor(text).input_ids
+        # Tokenize text using the new API (avoids deprecation warning)
+        labels = processor.tokenizer(text).input_ids
         
         return {"input_values": input_values, "labels": labels, "valid": True}
     
