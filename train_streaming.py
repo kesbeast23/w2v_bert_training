@@ -262,20 +262,20 @@ def main():
     )
     
     # Apply advanced model config if provided (for better accuracy)
-    # HF Blog recommends: all dropouts=0, mask_time_prob=0, add_adapter=True
+    # SpecAugment: mask_time_prob and mask_feature_prob help regularization during training
     config.update({
         "attention_dropout": cfg.get("attention_dropout", 0.0),
         "activation_dropout": cfg.get("activation_dropout", 0.0),
         "feat_proj_dropout": cfg.get("feat_proj_dropout", 0.0),
         "hidden_dropout": cfg.get("hidden_dropout", 0.0),
         "final_dropout": cfg.get("final_dropout", 0.0),
-        "mask_time_prob": cfg.get("mask_time_prob", 0.0),  # Should be 0 for CTC
+        "mask_time_prob": cfg.get("mask_time_prob", 0.05),  # SpecAugment time masking
         "mask_time_length": cfg.get("mask_time_length", 10),
-        "mask_feature_prob": cfg.get("mask_feature_prob", 0.0),
+        "mask_feature_prob": cfg.get("mask_feature_prob", 0.004),  # SpecAugment feature masking  
         "mask_feature_length": cfg.get("mask_feature_length", 10),
         "layerdrop": cfg.get("layerdrop", 0.0),
         "ctc_loss_reduction": cfg.get("ctc_loss_reduction", "mean"),
-        "ctc_zero_infinity": cfg.get("ctc_zero_infinity", False),
+        "ctc_zero_infinity": cfg.get("ctc_zero_infinity", True),  # Prevents inf loss
         "add_adapter": cfg.get("add_adapter", True),  # CRITICAL: enables adapter layer
     })
     
@@ -335,6 +335,7 @@ def main():
         run_name=cfg.get("run_name"),
         seed=cfg.get("seed", 42),
         dataloader_num_workers=0,  # Streaming doesn't support multiprocessing
+        adam_beta2=cfg.get("adam_beta2", 0.98),  # Smoother loss curves (HF blog recommends 0.95-0.98)
     )
     
     # Data collator
