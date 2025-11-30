@@ -274,38 +274,31 @@ def main():
     train_dataset = raw_train.map(prepare_dataset, remove_columns=raw_train.column_names).filter(filter_valid).remove_columns(["valid"])
     eval_dataset = raw_eval.map(prepare_dataset, remove_columns=raw_eval.column_names).filter(filter_valid).remove_columns(["valid"])
     
-    # Load model with custom config
-    from transformers import Wav2Vec2BertConfig
-    
-    config = Wav2Vec2BertConfig.from_pretrained(
-        cfg["model_name_or_path"],
-        vocab_size=len(processor.tokenizer),
-        pad_token_id=processor.tokenizer.pad_token_id,
-        token=hf_token
-    )
-    
-    # Apply advanced model config if provided (for better accuracy)
-    # SpecAugment: mask_time_prob and mask_feature_prob help regularization during training
-    config.update({
-        "attention_dropout": cfg.get("attention_dropout", 0.0),
-        "activation_dropout": cfg.get("activation_dropout", 0.0),
-        "feat_proj_dropout": cfg.get("feat_proj_dropout", 0.0),
-        "hidden_dropout": cfg.get("hidden_dropout", 0.0),
-        "final_dropout": cfg.get("final_dropout", 0.0),
-        "mask_time_prob": cfg.get("mask_time_prob", 0.05),  # SpecAugment time masking
-        "mask_time_length": cfg.get("mask_time_length", 10),
-        "mask_feature_prob": cfg.get("mask_feature_prob", 0.004),  # SpecAugment feature masking  
-        "mask_feature_length": cfg.get("mask_feature_length", 10),
-        "layerdrop": cfg.get("layerdrop", 0.0),
-        "ctc_loss_reduction": cfg.get("ctc_loss_reduction", "mean"),
-        "ctc_zero_infinity": cfg.get("ctc_zero_infinity", True),  # Prevents inf loss
-        "add_adapter": cfg.get("add_adapter", True),  # CRITICAL: enables adapter layer
-    })
+    # Load model directly with all config parameters
+    # Based on HuggingFace blog: https://huggingface.co/blog/fine-tune-w2v2-bert
+    # Do NOT load config separately - pass parameters directly to from_pretrained
+    print(f"Loading model: {cfg['model_name_or_path']}")
     
     model = Wav2Vec2BertForCTC.from_pretrained(
         cfg["model_name_or_path"],
-        config=config,
-        token=hf_token
+        token=hf_token,
+        # Vocabulary settings
+        vocab_size=len(processor.tokenizer),
+        pad_token_id=processor.tokenizer.pad_token_id,
+        # Dropout settings (disable for adapter training to prevent overfitting issues)
+        attention_dropout=cfg.get("attention_dropout", 0.0),
+        hidden_dropout=cfg.get("hidden_dropout", 0.0),
+        feat_proj_dropout=cfg.get("feat_proj_dropout", 0.0),
+        layerdrop=cfg.get("layerdrop", 0.0),
+        # SpecAugment settings
+        mask_time_prob=cfg.get("mask_time_prob", 0.0),  # Set to 0 initially, can increase
+        mask_time_length=cfg.get("mask_time_length", 10),
+        mask_feature_prob=cfg.get("mask_feature_prob", 0.0),
+        mask_feature_length=cfg.get("mask_feature_length", 10),
+        # CTC settings
+        ctc_loss_reduction=cfg.get("ctc_loss_reduction", "mean"),
+        # Adapter settings - CRITICAL for efficient fine-tuning
+        add_adapter=cfg.get("add_adapter", True),
     )
     
     # W2V-BERT doesn't use freeze_feature_encoder like regular Wav2Vec2
