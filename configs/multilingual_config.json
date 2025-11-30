@@ -1,6 +1,6 @@
 {
 	"model_name_or_path": "facebook/w2v-bert-2.0",
-	"dataset_name": "dsfsi-anv/anv_train_sample",
+	"dataset_name": "dsfsi-anv/za-african-next-voices",
 	"dataset_config_name": [
 		"isizulu",
 		"isixhosa",
