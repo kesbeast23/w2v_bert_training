@@ -26,3 +26,6 @@ numpy>=1.24.0
 pandas>=2.0.0
 regex
 python-dotenv
+whisper
+peft
+tqdm

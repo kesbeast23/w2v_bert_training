@@ -149,6 +149,10 @@ def compute_wer_on_dataset(model, processor, dataset, batch_size=8, num_beams=4)
     Compute WER on a dataset using beam search decoding.
     This matches the official evaluation setup.
     """
+    if len(dataset) == 0:
+        print("⚠️  Empty dataset, cannot compute WER")
+        return {"wer": 1.0, "cer": 1.0}, [], []
+    
     collator = GraniteSpeechCollator(processor, inference_mode=True)
     dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=collator, num_workers=0)
     
@@ -159,7 +163,7 @@ def compute_wer_on_dataset(model, processor, dataset, batch_size=8, num_beams=4)
     all_outputs = []
     all_references = []
     
-    print(f"Running inference with beam_size={num_beams}...")
+    print(f"Running inference with beam_size={num_beams} on {len(dataset)} samples...")
     for batch in tqdm.tqdm(dataloader, desc="Evaluating"):
         batch = batch.to("cuda")
         with torch.inference_mode(), torch.amp.autocast("cuda", dtype=torch.bfloat16):
@@ -181,6 +185,10 @@ def compute_wer_on_dataset(model, processor, dataset, batch_size=8, num_beams=4)
     # Get ground truth from dataset
     for example in dataset:
         all_references.append(example["text"].lower().strip())
+    
+    if len(all_outputs) == 0 or len(all_references) == 0:
+        print("⚠️  No outputs or references, cannot compute WER")
+        return {"wer": 1.0, "cer": 1.0}, [], []
     
     wer = wer_metric.compute(references=all_references, predictions=all_outputs)
     cer = cer_metric.compute(references=all_references, predictions=all_outputs)
@@ -435,15 +443,25 @@ def main():
 
         audio = batch["audio"]
         
-        # Handle different audio formats
+        # Handle different audio formats (including AudioDecoder from streaming)
         if isinstance(audio, dict):
-            sr = audio["sampling_rate"]
-            arr = audio["array"]
+            sr = audio.get("sampling_rate", target_sr)
+            arr = audio.get("array")
         elif hasattr(audio, "sampling_rate") and hasattr(audio, "array"):
+            # AudioDecoder object from streaming
             sr = audio.sampling_rate
-            arr = audio.array
+            arr = np.array(audio.array)
         else:
+            print(f"Unknown audio format: {type(audio)}")
             return {"audio": None, "text": "", "prompt": "", "valid": False}
+        
+        if arr is None:
+            return {"audio": None, "text": "", "prompt": "", "valid": False}
+        
+        # Convert to numpy if needed
+        if hasattr(arr, 'numpy'):
+            arr = arr.numpy()
+        arr = np.array(arr, dtype=np.float32)
 
         # Duration filter
         duration = len(arr) / sr
@@ -575,9 +593,24 @@ def main():
 
     # Prepare a fixed eval sample for WER computation (materialized list)
     print("Preparing eval samples for WER computation...")
-    wer_eval_samples = cfg.get("wer_eval_samples", 200)
-    eval_sample_for_wer = list(eval_dataset.take(wer_eval_samples))
+    wer_eval_samples = cfg.get("wer_eval_samples", 300)
+    
+    # Materialize eval samples - iterate through the streaming dataset
+    eval_sample_for_wer = []
+    print(f"Collecting up to {wer_eval_samples} eval samples...")
+    for i, example in enumerate(eval_dataset):
+        eval_sample_for_wer.append(example)
+        if len(eval_sample_for_wer) >= wer_eval_samples:
+            break
+        if (i + 1) % 50 == 0:
+            print(f"  Collected {len(eval_sample_for_wer)} samples...")
+    
     print(f"Using {len(eval_sample_for_wer)} samples for WER evaluation every {cfg.get('eval_steps', 1000)} steps")
+    
+    if len(eval_sample_for_wer) == 0:
+        print("⚠️  WARNING: No eval samples collected! Check your dataset filtering.")
+        print("   Disabling baseline WER computation...")
+        cfg["compute_baseline_wer"] = False
 
     # Custom Trainer with WER tracking
     trainer = GraniteSpeechTrainer(
@@ -597,17 +630,13 @@ def main():
     # --------------------------
     # Compute WER BEFORE training (baseline)
     # --------------------------
-    if cfg.get("compute_baseline_wer", True):
+    if cfg.get("compute_baseline_wer", True) and len(eval_sample_for_wer) > 0:
         print("\n" + "="*60)
         print("Computing BASELINE WER before training...")
         print("="*60)
         
-        # Take a sample for WER computation
-        eval_sample_size = cfg.get("wer_eval_samples", 200)
-        eval_sample = list(eval_dataset.take(eval_sample_size))
-        
         baseline_metrics, _, _ = compute_wer_on_dataset(
-            model, processor, eval_sample, 
+            model, processor, eval_sample_for_wer, 
             batch_size=cfg.get("per_device_eval_batch_size", 16),
             num_beams=cfg.get("num_beams", 4)
         )
@@ -620,6 +649,8 @@ def main():
                 "baseline_wer": baseline_metrics['wer'],
                 "baseline_cer": baseline_metrics['cer'],
             })
+    else:
+        baseline_metrics = None
 
     # --------------------------
     # Train
@@ -643,41 +674,40 @@ def main():
     # --------------------------
     # Compute FINAL WER (after training)
     # --------------------------
-    print("\n" + "="*60)
-    print("Computing FINAL WER after training...")
-    print("="*60)
-    
-    # Reload eval sample (in case it was consumed)
-    eval_sample = list(eval_dataset.take(cfg.get("wer_eval_samples", 200)))
-    
-    final_metrics, predictions, references = compute_wer_on_dataset(
-        model, processor, eval_sample,
-        batch_size=cfg.get("per_device_eval_batch_size", 16),
-        num_beams=cfg.get("num_beams", 4)
-    )
-    
-    print(f"\n📊 FINAL WER: {final_metrics['wer']*100:.2f}%")
-    print(f"📊 FINAL CER: {final_metrics['cer']*100:.2f}%")
-    
-    if cfg.get("compute_baseline_wer", True):
-        wer_improvement = baseline_metrics['wer'] - final_metrics['wer']
-        print(f"\n🎯 WER IMPROVEMENT: {wer_improvement*100:.2f}% absolute")
-        print(f"🎯 Relative improvement: {(wer_improvement/baseline_metrics['wer'])*100:.1f}%")
+    if len(eval_sample_for_wer) > 0:
+        print("\n" + "="*60)
+        print("Computing FINAL WER after training...")
+        print("="*60)
         
-        if wandb_key:
-            wandb.log({
-                "final_wer": final_metrics['wer'],
-                "final_cer": final_metrics['cer'],
-                "wer_improvement": wer_improvement,
-            })
-    
-    # Save some example predictions
-    print("\n" + "="*60)
-    print("Sample predictions:")
-    print("="*60)
-    for i in range(min(5, len(predictions))):
-        print(f"\nReference:  {references[i]}")
-        print(f"Prediction: {predictions[i]}")
+        final_metrics, predictions, references = compute_wer_on_dataset(
+            model, processor, eval_sample_for_wer,
+            batch_size=cfg.get("per_device_eval_batch_size", 16),
+            num_beams=cfg.get("num_beams", 4)
+        )
+        
+        print(f"\n📊 FINAL WER: {final_metrics['wer']*100:.2f}%")
+        print(f"📊 FINAL CER: {final_metrics['cer']*100:.2f}%")
+        
+        if baseline_metrics is not None:
+            wer_improvement = baseline_metrics['wer'] - final_metrics['wer']
+            print(f"\n🎯 WER IMPROVEMENT: {wer_improvement*100:.2f}% absolute")
+            if baseline_metrics['wer'] > 0:
+                print(f"🎯 Relative improvement: {(wer_improvement/baseline_metrics['wer'])*100:.1f}%")
+            
+            if wandb_key:
+                wandb.log({
+                    "final_wer": final_metrics['wer'],
+                    "final_cer": final_metrics['cer'],
+                    "wer_improvement": wer_improvement,
+                })
+        
+        # Save some example predictions
+        print("\n" + "="*60)
+        print("Sample predictions:")
+        print("="*60)
+        for i in range(min(5, len(predictions))):
+            print(f"\nReference:  {references[i]}")
+            print(f"Prediction: {predictions[i]}")
     
     # Push to hub if requested
     if cfg.get("push_to_hub", True):
