@@ -260,12 +260,11 @@ def main():
         ctc_zero_infinity=cfg.get("ctc_zero_infinity", True),
     )
 
-    # Enable gradient checkpointing if configured
-    if cfg.get("gradient_checkpointing", True):
-        model.gradient_checkpointing_enable(
-            gradient_checkpointing_kwargs={"use_reentrant": False}
-        )
-        print("Enabled gradient checkpointing")
+    # NOTE: Gradient checkpointing is DISABLED for Parakeet
+    # Parakeet uses NeMo's FastConformer with custom CUDA kernels that are
+    # incompatible with PyTorch's gradient checkpointing (causes "GET was 
+    # unable to find an engine" error). Use smaller batch sizes instead.
+    print("Note: Gradient checkpointing disabled for Parakeet (use smaller batches for memory)")
 
     # Print trainable parameters
     total_params = sum(p.numel() for p in model.parameters())
@@ -303,10 +302,10 @@ def main():
     training_args = TrainingArguments(
         output_dir=output_dir,
         overwrite_output_dir=cfg.get("overwrite_output_dir", True),
-        # Batch settings
-        per_device_train_batch_size=cfg.get("per_device_train_batch_size", 4),
-        per_device_eval_batch_size=cfg.get("per_device_eval_batch_size", 4),
-        gradient_accumulation_steps=cfg.get("gradient_accumulation_steps", 8),
+        # Batch settings - smaller batch due to no gradient checkpointing
+        per_device_train_batch_size=cfg.get("per_device_train_batch_size", 2),
+        per_device_eval_batch_size=cfg.get("per_device_eval_batch_size", 2),
+        gradient_accumulation_steps=cfg.get("gradient_accumulation_steps", 16),
         # Learning rate
         learning_rate=cfg.get("learning_rate", 5e-5),
         warmup_steps=cfg.get("warmup_steps", 500),
@@ -315,9 +314,8 @@ def main():
         # Precision
         bf16=cfg.get("bf16", True),
         fp16=cfg.get("fp16", False) and not cfg.get("bf16", False),
-        # Checkpointing
-        gradient_checkpointing=cfg.get("gradient_checkpointing", True),
-        gradient_checkpointing_kwargs={"use_reentrant": False},
+        # NO gradient checkpointing for Parakeet (incompatible with FastConformer)
+        gradient_checkpointing=False,
         # Evaluation
         eval_strategy=cfg.get("eval_strategy", "steps"),
         eval_steps=cfg.get("eval_steps", 1000),
