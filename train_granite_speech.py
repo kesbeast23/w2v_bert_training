@@ -551,21 +551,21 @@ def main():
         # Warmup - use ratio (works with both epochs and max_steps)
         warmup_ratio=cfg.get("warmup_ratio", 0.2),
         
-        # Training duration - use num_train_epochs (official example uses epochs, not max_steps)
+        # Training duration - max_steps required for streaming datasets
         num_train_epochs=cfg.get("num_train_epochs", 1),
-        max_steps=cfg.get("max_steps", -1) if cfg.get("max_steps", -1) > 0 else -1,  # -1 means use num_train_epochs
+        max_steps=cfg.get("max_steps", 10000),  # Required for streaming datasets
         
         # Precision - bf16 is optimal for A100
         bf16=cfg.get("bf16", True),
         fp16=False,
         
-        # Evaluation strategy - evaluate every 10% of training (like official example)
+        # Evaluation strategy
         eval_strategy=cfg.get("eval_strategy", "steps"),
-        eval_steps=cfg.get("eval_steps", 0.1),  # 0.1 = every 10% of epoch
+        eval_steps=cfg.get("eval_steps", 1000),
         
-        # Logging - every 10% of training
+        # Logging
         logging_strategy="steps",
-        logging_steps=cfg.get("logging_steps", 0.1),  # 0.1 = every 10% of epoch
+        logging_steps=cfg.get("logging_steps", 50),
         logging_first_step=True,
         
         # Saving - no saving during training (like official example), save at end
