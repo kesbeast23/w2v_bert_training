@@ -55,7 +55,7 @@
     "metric_for_best_model": "eval_loss",
     "greater_is_better": false,
     
-    "early_stopping": true,
+    "early_stopping": false,
     "early_stopping_patience": 3,
     "early_stopping_threshold": 0.001,
     

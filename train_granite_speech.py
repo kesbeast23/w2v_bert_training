@@ -599,15 +599,9 @@ def main():
     # Data collator
     data_collator = GraniteSpeechCollator(processor=processor, inference_mode=False)
 
-    # Early stopping callback to prevent overfitting
+    # No early stopping when save_strategy="no" (per official HF example)
+    # Early stopping requires load_best_model_at_end=True which needs checkpoints
     callbacks = []
-    if cfg.get("early_stopping", True):
-        callbacks.append(
-            EarlyStoppingCallback(
-                early_stopping_patience=cfg.get("early_stopping_patience", 3),
-                early_stopping_threshold=cfg.get("early_stopping_threshold", 0.001),
-            )
-        )
 
     # Prepare a fixed eval sample for WER computation (materialized list)
     print("Preparing eval samples for WER computation...")
