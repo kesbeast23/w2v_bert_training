@@ -35,6 +35,8 @@ from transformers import (
     set_seed
 )
 import regex as re
+from safetensors.torch import save_file as safe_save_file
+from transformers.models.wav2vec2.modeling_wav2vec2 import WAV2VEC2_ADAPTER_SAFE_FILE
 
 # Load environment variables
 load_dotenv()
@@ -413,9 +415,15 @@ def main():
     processor.save_pretrained(training_args.output_dir)
     
     # Save adapter weights separately for easy sharing
-    adapter_path = os.path.join(training_args.output_dir, f"adapter.{target_language}.safetensors")
-    model.save_adapter(training_args.output_dir, target_language)
+    adapter_file = WAV2VEC2_ADAPTER_SAFE_FILE.format(target_language)
+    adapter_path = os.path.join(training_args.output_dir, adapter_file)
+    
+    safe_save_file(model._get_adapters(), adapter_path, metadata={"format": "pt"})
     print(f"Adapter saved to: {adapter_path}")
+    
+    if training_args.push_to_hub:
+        print("Pushing to Hub...")
+        trainer.push_to_hub()
     
     print(f"Training complete! Model saved to {training_args.output_dir}")
 
