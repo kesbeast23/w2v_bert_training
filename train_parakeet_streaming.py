@@ -74,32 +74,43 @@ class DataCollatorParakeetCTC:
     processor: Any
 
     def __call__(self, features: List[Dict]) -> Dict[str, torch.Tensor]:
-        # Filter out any None audio entries
-        valid_features = [f for f in features if f.get("audio") is not None and f["audio"].get("array") is not None]
+        # Extract audio arrays - handle both dict format and direct array
+        audios = []
+        texts = []
         
-        if not valid_features:
-            raise ValueError("No valid features in batch")
-        
-        audios = [f["audio"]["array"].astype(np.float32) for f in valid_features]
-        texts = [f["text"] for f in valid_features]
+        for f in features:
+            audio = f["audio"]
+            text = f["text"]
+            
+            # Handle different audio formats
+            if isinstance(audio, dict):
+                arr = audio["array"]
+            elif hasattr(audio, "array"):
+                arr = audio.array
+            else:
+                arr = audio
+            
+            # Ensure float32
+            if hasattr(arr, 'astype'):
+                arr = arr.astype(np.float32)
+            
+            audios.append(arr)
+            texts.append(text)
 
-        # Process with explicit padding and truncation
+        # Process with Parakeet processor
         batch = self.processor(
             audio=audios,
             text=texts,
             sampling_rate=self.processor.feature_extractor.sampling_rate,
             return_tensors="pt",
             padding=True,
-            truncation=True,
-            max_length=448,  # Limit sequence length for stability
         )
 
         # Replace padding token id with -100 for CTC loss
         if "labels" in batch:
-            labels = batch["labels"]
+            labels = batch["labels"].clone()
             pad_id = self.processor.tokenizer.pad_token_id
             if pad_id is not None:
-                labels = labels.clone()
                 labels[labels == pad_id] = -100
             batch["labels"] = labels
 
@@ -227,17 +238,25 @@ def main():
             return {"audio": None, "text": "", "valid": False}
 
         audio = batch["audio"]
-        sr = audio["sampling_rate"]
-        arr = audio["array"]
+        
+        # Handle different audio formats (dict vs AudioDecoder)
+        if isinstance(audio, dict):
+            sr = audio["sampling_rate"]
+            arr = audio["array"]
+        elif hasattr(audio, "sampling_rate") and hasattr(audio, "array"):
+            sr = audio.sampling_rate
+            arr = audio.array
+        else:
+            return {"audio": None, "text": "", "valid": False}
 
         # Duration filter
         duration = len(arr) / sr
         if duration < min_dur or duration > max_dur:
             return {"audio": None, "text": "", "valid": False}
 
-        # Keep raw audio dict for data collator
+        # Store audio as dict with array for data collator
         return {
-            "audio": audio,
+            "audio": {"array": arr, "sampling_rate": sr},
             "text": text,
             "valid": True,
         }
