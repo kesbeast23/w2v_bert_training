@@ -1,7 +1,7 @@
 {
 	"model_name_or_path": "facebook/mms-1b-all",
 	"target_language": "zul",
-	"dataset_name": "dsfsi-anv/anv_train_sample",
+	"dataset_name": "dsfsi-anv/za-african-next-voices",
 	"dataset_config_name": [
 		"isizulu",
 		"isixhosa",
