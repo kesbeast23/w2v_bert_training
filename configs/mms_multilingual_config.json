@@ -3,12 +3,12 @@
 	"target_language": "zul",
 	"dataset_name": "dsfsi-anv/za-african-next-voices",
 	"dataset_config_name": [
-		"isizulu",
-		"isixhosa",
-		"sesotho",
-		"setswana",
-		"tshivenda",
-		"xitsonga"
+		"zul",
+		"xho",
+		"sot",
+		"tsn",
+		"ven",
+		"tso"
 	],
 	"eval_dataset_name": "dsfsi-anv/za-african-next-voices",
 	"eval_dataset_config_name": [
