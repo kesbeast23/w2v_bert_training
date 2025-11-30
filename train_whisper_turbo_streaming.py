@@ -114,7 +114,7 @@ def main():
         wandb.init(
             entity=os.getenv("WANDB_ENTITY", "dsfsi"),
             project=os.getenv("WANDB_PROJECT", "dsfsi-asr"),
-            name=cfg.get("run_name", "whisper-v3-turbo"),
+            name=cfg.get("run_name", "whisper-v3"),
         )
 
     # --------------------------
@@ -174,7 +174,7 @@ def main():
     # --------------------------
     # Processor & model
     # --------------------------
-    model_name = cfg.get("model_name_or_path", "openai/whisper-large-v3-turbo")
+    model_name = cfg.get("model_name_or_path", "openai/whisper-large-v3")
 
     print(f"Loading processor: {model_name}")
     processor = WhisperProcessor.from_pretrained(model_name, token=hf_token)
@@ -301,7 +301,7 @@ def main():
     # --------------------------
     # Training args (per HF blog)
     # --------------------------
-    output_dir = cfg.get("output_dir", "./outputs/whisper-v3-turbo-multilingual")
+    output_dir = cfg.get("output_dir", "./outputs/whisper-v3-multilingual")
 
     training_args = Seq2SeqTrainingArguments(
         output_dir=output_dir,
@@ -337,9 +337,9 @@ def main():
         greater_is_better=cfg.get("greater_is_better", False),
         # Logging & Hub
         report_to=cfg.get("report_to", ["wandb"]),
-        run_name=cfg.get("run_name", "whisper-v3-turbo-multilingual"),
+        run_name=cfg.get("run_name", "whisper-v3-multilingual"),
         push_to_hub=cfg.get("push_to_hub", True),
-        hub_model_id=cfg.get("hub_model_id", "kesbeast23/multilingual-whisper-v3-turbo"),
+        hub_model_id=cfg.get("hub_model_id", "kesbeast23/multilingual-whisper-v3"),
         hub_strategy=cfg.get("hub_strategy", "end"),
         # Reproducibility
         seed=cfg.get("seed", 42),

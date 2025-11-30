@@ -1,5 +1,5 @@
 {
-	"model_name_or_path": "openai/whisper-large-v3-turbo",
+	"model_name_or_path": "openai/whisper-large-v3",
 	"dataset_name": "dsfsi-anv/za-african-next-voices",
 	"dataset_config_name": [
 		"zul",
@@ -26,7 +26,7 @@
 	"task": "transcribe",
 	"max_duration_in_seconds": 30.0,
 	"min_duration_in_seconds": 0.5,
-	"output_dir": "./outputs/whisper-v3-turbo-multilingual",
+	"output_dir": "./outputs/whisper-v3-multilingual",
 	"overwrite_output_dir": true,
 	"do_train": true,
 	"do_eval": true,
@@ -50,10 +50,10 @@
 	"greater_is_better": false,
 	"save_total_limit": 2,
 	"push_to_hub": true,
-	"hub_model_id": "kesbeast23/multilingual-whisper-v3-turbo",
+	"hub_model_id": "kesbeast23/multilingual-whisper-v3",
 	"hub_strategy": "end",
 	"report_to": ["wandb"],
-	"run_name": "whisper-v3-turbo-multilingual",
+	"run_name": "whisper-v3-multilingual",
 	"seed": 42,
 	"adam_beta2": 0.98,
 	"trust_remote_code": false
