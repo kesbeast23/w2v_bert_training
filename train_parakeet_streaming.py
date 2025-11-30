@@ -186,8 +186,7 @@ def main():
     else:
         raw_train = train_datasets[0]
     
-    # Add shuffle buffer for better streaming performance
-    raw_train = raw_train.shuffle(seed=cfg.get("seed", 42), buffer_size=1000)
+    # NOTE: Do NOT use .shuffle() with streaming + Trainer - it causes hangs
 
     eval_dataset_name = cfg.get("eval_dataset_name", dataset_name)
     eval_config_names = cfg.get("eval_dataset_config_name", dataset_config_names)
@@ -344,20 +343,19 @@ def main():
         warmup_steps=cfg.get("warmup_steps", 500),
         max_steps=cfg.get("max_steps", 10000),
         max_grad_norm=cfg.get("max_grad_norm", 1.0),
-        # Precision - use fp32 for Parakeet stability (bf16 can cause CUDA errors)
-        bf16=cfg.get("bf16", False),
-        fp16=cfg.get("fp16", False),
+        # Precision - use fp32 for Parakeet stability initially
+        bf16=False,
+        fp16=False,
         # NO gradient checkpointing for Parakeet (incompatible with FastConformer)
         gradient_checkpointing=False,
         # Evaluation
-        eval_strategy=cfg.get("eval_strategy", "steps"),
+        evaluation_strategy=cfg.get("eval_strategy", "steps"),
         eval_steps=cfg.get("eval_steps", 1000),
         save_steps=cfg.get("save_steps", 1000),
         logging_steps=cfg.get("logging_steps", 25),
-        # Streaming-friendly
+        # Streaming-friendly - CRITICAL: no multiprocessing with IterableDataset
         group_by_length=False,
-        dataloader_num_workers=1,  # Use 1 worker for streaming datasets
-        dataloader_prefetch_factor=2,  # Prefetch batches
+        dataloader_num_workers=0,  # Must be 0 for streaming datasets
         remove_unused_columns=False,  # Keep audio column for data collator
         # Saving
         save_total_limit=cfg.get("save_total_limit", 2),
