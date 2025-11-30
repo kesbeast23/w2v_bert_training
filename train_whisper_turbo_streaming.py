@@ -199,10 +199,14 @@ def main():
     model.generation_config.forced_decoder_ids = None
 
     # Gradient checkpointing for memory efficiency (per HF blog)
+    # CRITICAL: Must disable use_cache BEFORE enabling gradient checkpointing
+    # to avoid "backward through graph second time" error
+    model.config.use_cache = False
+    
     if cfg.get("gradient_checkpointing", True):
-        model.gradient_checkpointing_enable()
-        model.config.use_cache = False
-        print("Enabled gradient checkpointing")
+        # Use gradient_checkpointing_enable with use_reentrant=False for newer PyTorch
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+        print("Enabled gradient checkpointing (use_reentrant=False)")
 
     # --------------------------
     # Audio casting
@@ -313,8 +317,9 @@ def main():
         # Precision
         fp16=cfg.get("fp16", False) and not cfg.get("bf16", False),
         bf16=cfg.get("bf16", True),
-        # Checkpointing
+        # Checkpointing - use_reentrant=False fixes backward graph error
         gradient_checkpointing=cfg.get("gradient_checkpointing", True),
+        gradient_checkpointing_kwargs={"use_reentrant": False},
         # Evaluation
         eval_strategy=cfg.get("eval_strategy", "steps"),
         eval_steps=cfg.get("eval_steps", 1000),
