@@ -13,7 +13,11 @@ Usage:
   python train_granite_speech.py configs/granite_config.json
 """
 
+# CRITICAL: Set audio backend BEFORE any imports that might trigger datasets
 import os
+os.environ["DATASETS_AUDIO_BACKEND"] = "soundfile"
+os.environ["HF_DATASETS_AUDIO_BACKEND"] = "soundfile"
+
 import sys
 import json
 from typing import Dict, List, Any
@@ -22,9 +26,6 @@ import torch
 import numpy as np
 import regex as re
 import tqdm
-
-# Avoid torchaudio/torchcodec conflicts
-os.environ["DATASETS_AUDIO_BACKEND"] = "soundfile"
 
 from dotenv import load_dotenv
 import wandb
@@ -412,11 +413,12 @@ def main():
         raw_eval = eval_datasets[0]
 
     # --------------------------
-    # Audio casting
+    # Audio casting - Force decode to dict format
     # --------------------------
-    print(f"Casting audio to {target_sr} Hz...")
-    raw_train = raw_train.cast_column("audio", Audio(sampling_rate=target_sr))
-    raw_eval = raw_eval.cast_column("audio", Audio(sampling_rate=target_sr))
+    print(f"Casting audio to {target_sr} Hz with soundfile backend...")
+    # Using decode=True ensures we get dict format regardless of backend
+    raw_train = raw_train.cast_column("audio", Audio(sampling_rate=target_sr, decode=True))
+    raw_eval = raw_eval.cast_column("audio", Audio(sampling_rate=target_sr, decode=True))
 
     text_col = cfg.get("text_column_name", "transcript")
     max_dur = cfg.get("max_duration_in_seconds", 30.0)
@@ -443,34 +445,30 @@ def main():
 
         audio = batch["audio"]
         
-        # Handle different audio formats
+        # Handle different audio formats including torchcodec AudioDecoder
         try:
             if isinstance(audio, dict):
-                # Standard dict format from datasets
+                # Standard dict format from datasets (soundfile backend)
                 sr = audio.get("sampling_rate", target_sr)
                 arr = audio.get("array")
-            elif hasattr(audio, "__call__"):
-                # AudioDecoder - needs to be called to decode
-                decoded = audio()
-                if isinstance(decoded, dict):
-                    sr = decoded.get("sampling_rate", target_sr)
-                    arr = decoded.get("array")
-                else:
-                    sr = target_sr
-                    arr = decoded
-            elif hasattr(audio, "sampling_rate") and hasattr(audio, "array"):
-                # Object with attributes
-                sr = audio.sampling_rate
-                arr = audio.array
             else:
-                # Try to decode if it's an AudioDecoder-like object
-                # Access the underlying data
-                if hasattr(audio, '_decode'):
-                    decoded = audio._decode()
-                    sr = decoded.get("sampling_rate", target_sr)
-                    arr = decoded.get("array")
-                else:
-                    print(f"Unknown audio format: {type(audio)}")
+                # For AudioDecoder from torchcodec, we need to access it differently
+                # The AudioDecoder is lazy - calling it or accessing array decodes the audio
+                try:
+                    # Try to get the array attribute (works for most cases)
+                    if hasattr(audio, 'array'):
+                        arr = audio.array
+                        sr = getattr(audio, 'sampling_rate', target_sr)
+                    # AudioDecoder might be indexable
+                    elif hasattr(audio, '__getitem__'):
+                        decoded = audio[:]  # Get all samples
+                        arr = decoded
+                        sr = getattr(audio, 'sampling_rate', target_sr)
+                    else:
+                        print(f"Unknown audio format: {type(audio)}")
+                        return {"audio": None, "text": "", "prompt": "", "valid": False}
+                except Exception as e:
+                    print(f"Error accessing audio data: {e}, type: {type(audio)}")
                     return {"audio": None, "text": "", "prompt": "", "valid": False}
         except Exception as e:
             print(f"Error processing audio: {e}")
@@ -484,7 +482,13 @@ def main():
             arr = arr.numpy()
         elif hasattr(arr, 'cpu'):
             arr = arr.cpu().numpy()
+        
+        # Ensure float32 numpy array
         arr = np.array(arr, dtype=np.float32)
+        
+        # Flatten if multi-channel (take first channel)
+        if len(arr.shape) > 1:
+            arr = arr[0] if arr.shape[0] < arr.shape[1] else arr[:, 0]
 
         # Duration filter
         duration = len(arr) / sr
