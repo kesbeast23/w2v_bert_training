@@ -185,6 +185,9 @@ def main():
         raw_train = interleave_datasets(train_datasets, seed=cfg.get("seed", 42))
     else:
         raw_train = train_datasets[0]
+    
+    # Add shuffle buffer for better streaming performance
+    raw_train = raw_train.shuffle(seed=cfg.get("seed", 42), buffer_size=1000)
 
     eval_dataset_name = cfg.get("eval_dataset_name", dataset_name)
     eval_config_names = cfg.get("eval_dataset_config_name", dataset_config_names)
@@ -353,7 +356,8 @@ def main():
         logging_steps=cfg.get("logging_steps", 25),
         # Streaming-friendly
         group_by_length=False,
-        dataloader_num_workers=0,
+        dataloader_num_workers=1,  # Use 1 worker for streaming datasets
+        dataloader_prefetch_factor=2,  # Prefetch batches
         remove_unused_columns=False,  # Keep audio column for data collator
         # Saving
         save_total_limit=cfg.get("save_total_limit", 2),
