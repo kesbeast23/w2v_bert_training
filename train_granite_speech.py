@@ -548,28 +548,28 @@ def main():
         learning_rate=cfg.get("learning_rate", 3e-5),
         weight_decay=cfg.get("weight_decay", 0.01),
         
-        # Warmup - 20% warmup ratio helps stabilize training
+        # Warmup - use ratio (works with both epochs and max_steps)
         warmup_ratio=cfg.get("warmup_ratio", 0.2),
         
-        # Training duration
-        num_train_epochs=cfg.get("num_train_epochs", 3),
-        max_steps=cfg.get("max_steps", -1),  # -1 means use num_train_epochs
+        # Training duration - use num_train_epochs (official example uses epochs, not max_steps)
+        num_train_epochs=cfg.get("num_train_epochs", 1),
+        max_steps=cfg.get("max_steps", -1) if cfg.get("max_steps", -1) > 0 else -1,  # -1 means use num_train_epochs
         
         # Precision - bf16 is optimal for A100
         bf16=cfg.get("bf16", True),
         fp16=False,
         
-        # Evaluation strategy - evaluate frequently to track WER
+        # Evaluation strategy - evaluate every 10% of training (like official example)
         eval_strategy=cfg.get("eval_strategy", "steps"),
-        eval_steps=cfg.get("eval_steps", 0.1),  # Evaluate every 10% of epoch
+        eval_steps=cfg.get("eval_steps", 0.1),  # 0.1 = every 10% of epoch
         
-        # Logging
+        # Logging - every 10% of training
         logging_strategy="steps",
-        logging_steps=cfg.get("logging_steps", 0.1),  # Log every 10% of epoch
+        logging_steps=cfg.get("logging_steps", 0.1),  # 0.1 = every 10% of epoch
         logging_first_step=True,
         
-        # Saving - save based on eval loss
-        save_strategy=cfg.get("save_strategy", "steps"),
+        # Saving - no saving during training (like official example), save at end
+        save_strategy=cfg.get("save_strategy", "no"),
         save_steps=cfg.get("save_steps", 0.1),
         save_total_limit=cfg.get("save_total_limit", 3),
         load_best_model_at_end=True,
@@ -625,7 +625,7 @@ def main():
         if (i + 1) % 50 == 0:
             print(f"  Collected {len(eval_sample_for_wer)} samples...")
     
-    print(f"Using {len(eval_sample_for_wer)} samples for WER evaluation every {cfg.get('eval_steps', 1000)} steps")
+    print(f"Using {len(eval_sample_for_wer)} samples for WER evaluation every 10% of training")
     
     if len(eval_sample_for_wer) == 0:
         print("⚠️  WARNING: No eval samples collected! Check your dataset filtering.")

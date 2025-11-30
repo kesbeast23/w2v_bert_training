@@ -37,16 +37,16 @@
     "warmup_ratio": 0.2,
     "max_grad_norm": 1.0,
     
-    "num_train_epochs": 3,
-    "max_steps": 10000,
+    "num_train_epochs": 1,
+    "max_steps": -1,
     
     "bf16": true,
     
     "eval_strategy": "steps",
-    "eval_steps": 1000,
-    "save_strategy": "steps",
-    "save_steps": 1000,
-    "logging_steps": 50,
+    "eval_steps": 0.1,
+    "save_strategy": "no",
+    "save_steps": 0.1,
+    "logging_steps": 0.1,
     
     "dataloader_num_workers": 0,
     
