@@ -348,8 +348,8 @@ def main():
         fp16=False,
         # NO gradient checkpointing for Parakeet (incompatible with FastConformer)
         gradient_checkpointing=False,
-        # Evaluation
-        evaluation_strategy=cfg.get("eval_strategy", "steps"),
+        # Evaluation (newer transformers uses eval_strategy, not evaluation_strategy)
+        eval_strategy=cfg.get("eval_strategy", "steps"),
         eval_steps=cfg.get("eval_steps", 1000),
         save_steps=cfg.get("save_steps", 1000),
         logging_steps=cfg.get("logging_steps", 25),
