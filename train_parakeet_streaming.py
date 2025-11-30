@@ -23,8 +23,7 @@ import regex as re
 
 # Avoid torchaudio/torchcodec conflicts inside datasets
 os.environ["DATASETS_AUDIO_BACKEND"] = "soundfile"
-# Enable CUDA debugging for illegal memory access
-os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+# Note: Set CUDA_LAUNCH_BLOCKING=1 for debugging CUDA errors if needed
 
 from dotenv import load_dotenv
 import wandb
