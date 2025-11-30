@@ -290,13 +290,14 @@ def main():
         hidden_dropout=cfg.get("hidden_dropout", 0.0),
         feat_proj_dropout=cfg.get("feat_proj_dropout", 0.0),
         layerdrop=cfg.get("layerdrop", 0.0),
-        # SpecAugment settings
-        mask_time_prob=cfg.get("mask_time_prob", 0.0),  # Set to 0 initially, can increase
+        # SpecAugment settings - KEEP AT 0 initially to stabilize training
+        mask_time_prob=cfg.get("mask_time_prob", 0.0),
         mask_time_length=cfg.get("mask_time_length", 10),
         mask_feature_prob=cfg.get("mask_feature_prob", 0.0),
         mask_feature_length=cfg.get("mask_feature_length", 10),
-        # CTC settings
+        # CTC settings - ctc_zero_infinity CRITICAL to prevent NaN
         ctc_loss_reduction=cfg.get("ctc_loss_reduction", "mean"),
+        ctc_zero_infinity=True,  # CRITICAL: Prevents inf/nan loss
         # Adapter settings - CRITICAL for efficient fine-tuning
         add_adapter=cfg.get("add_adapter", True),
     )
@@ -351,7 +352,8 @@ def main():
         run_name=cfg.get("run_name"),
         seed=cfg.get("seed", 42),
         dataloader_num_workers=0,  # Streaming doesn't support multiprocessing
-        adam_beta2=cfg.get("adam_beta2", 0.98),  # Smoother loss curves (HF blog recommends 0.95-0.98)
+        adam_beta2=cfg.get("adam_beta2", 0.98),  # Smoother loss curves
+        max_grad_norm=cfg.get("max_grad_norm", 1.0),  # Gradient clipping to prevent explosion
     )
     
     # Data collator
