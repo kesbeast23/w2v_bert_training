@@ -722,18 +722,26 @@ def main():
         print(f"\n📊 FINAL WER: {final_metrics['wer']*100:.2f}%")
         print(f"📊 FINAL CER: {final_metrics['cer']*100:.2f}%")
         
+        # Always log final metrics to wandb
+        if wandb.run is not None:
+            wandb.log({
+                "final/wer": final_metrics['wer'],
+                "final/cer": final_metrics['cer'],
+                "final/num_eval_samples": len(final_eval_dataset),
+            })
+            # Log summary metrics
+            wandb.run.summary["final_wer"] = final_metrics['wer']
+            wandb.run.summary["final_cer"] = final_metrics['cer']
+        
         if baseline_metrics is not None:
             wer_improvement = baseline_metrics['wer'] - final_metrics['wer']
             print(f"\n🎯 WER IMPROVEMENT: {wer_improvement*100:.2f}% absolute")
             if baseline_metrics['wer'] > 0:
                 print(f"🎯 Relative improvement: {(wer_improvement/baseline_metrics['wer'])*100:.1f}%")
             
-            if wandb_key:
-                wandb.log({
-                    "final_wer": final_metrics['wer'],
-                    "final_cer": final_metrics['cer'],
-                    "wer_improvement": wer_improvement,
-                })
+            if wandb.run is not None:
+                wandb.log({"final/wer_improvement": wer_improvement})
+                wandb.run.summary["wer_improvement"] = wer_improvement
         
         # Save some example predictions
         print("\n" + "="*60)
