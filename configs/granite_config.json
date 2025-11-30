@@ -61,6 +61,7 @@
     
     "compute_baseline_wer": true,
     "wer_eval_samples": 300,
+    "use_full_eval_for_final": true,
     "num_beams": 4,
     
     "push_to_hub": true,

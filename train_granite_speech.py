@@ -632,6 +632,17 @@ def main():
         print("   Disabling baseline WER computation...")
         cfg["compute_baseline_wer"] = False
 
+    # Collect FULL eval set for final evaluation (if requested)
+    full_eval_for_final = None
+    if cfg.get("use_full_eval_for_final", True):
+        print("\nCollecting FULL eval set for final WER evaluation...")
+        full_eval_for_final = []
+        for i, example in enumerate(eval_dataset):
+            full_eval_for_final.append(example)
+            if (i + 1) % 500 == 0:
+                print(f"  Collected {len(full_eval_for_final)} samples...")
+        print(f"Total eval samples for final evaluation: {len(full_eval_for_final)}")
+
     # Custom Trainer with WER tracking
     trainer = GraniteSpeechTrainer(
         model=model,
@@ -694,13 +705,16 @@ def main():
     # --------------------------
     # Compute FINAL WER (after training)
     # --------------------------
-    if len(eval_sample_for_wer) > 0:
+    # Use full eval set if available, otherwise use the sample set
+    final_eval_dataset = full_eval_for_final if full_eval_for_final else eval_sample_for_wer
+    
+    if len(final_eval_dataset) > 0:
         print("\n" + "="*60)
-        print("Computing FINAL WER after training...")
+        print(f"Computing FINAL WER on {len(final_eval_dataset)} samples...")
         print("="*60)
         
         final_metrics, predictions, references = compute_wer_on_dataset(
-            model, processor, eval_sample_for_wer,
+            model, processor, final_eval_dataset,
             batch_size=cfg.get("per_device_eval_batch_size", 16),
             num_beams=cfg.get("num_beams", 4)
         )
