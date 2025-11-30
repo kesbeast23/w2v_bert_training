@@ -451,27 +451,20 @@ def main():
                 # Standard dict format from datasets (soundfile backend)
                 sr = audio.get("sampling_rate", target_sr)
                 arr = audio.get("array")
+            elif hasattr(audio, "get_all_samples"):
+                # torchcodec AudioDecoder (new HF audio backend)
+                samples = audio.get_all_samples()
+                arr = samples.data
+                sr = samples.sample_rate
+            elif hasattr(audio, 'array'):
+                # Object with array attribute
+                arr = audio.array
+                sr = getattr(audio, 'sampling_rate', target_sr)
             else:
-                # For AudioDecoder from torchcodec, we need to access it differently
-                # The AudioDecoder is lazy - calling it or accessing array decodes the audio
-                try:
-                    # Try to get the array attribute (works for most cases)
-                    if hasattr(audio, 'array'):
-                        arr = audio.array
-                        sr = getattr(audio, 'sampling_rate', target_sr)
-                    # AudioDecoder might be indexable
-                    elif hasattr(audio, '__getitem__'):
-                        decoded = audio[:]  # Get all samples
-                        arr = decoded
-                        sr = getattr(audio, 'sampling_rate', target_sr)
-                    else:
-                        print(f"Unknown audio format: {type(audio)}")
-                        return {"audio": None, "text": "", "prompt": "", "valid": False}
-                except Exception as e:
-                    print(f"Error accessing audio data: {e}, type: {type(audio)}")
-                    return {"audio": None, "text": "", "prompt": "", "valid": False}
+                print(f"Unknown audio format: {type(audio)}")
+                return {"audio": None, "text": "", "prompt": "", "valid": False}
         except Exception as e:
-            print(f"Error processing audio: {e}")
+            print(f"Error processing audio: {e}, type: {type(audio)}")
             return {"audio": None, "text": "", "prompt": "", "valid": False}
         
         if arr is None:
