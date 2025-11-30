@@ -15,7 +15,7 @@ import os
 import sys
 import json
 from dataclasses import dataclass
-from typing import Dict, List, Union, Any
+from typing import Dict, List, Any
 
 import torch
 import numpy as np
@@ -67,43 +67,30 @@ def clean_text(text: str) -> str:
 class DataCollatorParakeetCTC:
     """
     Data collator for Parakeet CTC training.
-    Processes audio arrays and text labels for CTC loss.
+    Parakeet processor returns input_features (log-mel) and labels.
     """
     processor: Any
-    padding: Union[bool, str] = True
-    max_length: int = None
-    
+
     def __call__(self, features: List[Dict]) -> Dict[str, torch.Tensor]:
-        # Extract audio arrays and texts
-        input_features = []
-        labels_list = []
-        
-        for f in features:
-            # Get input features (already preprocessed)
-            input_features.append({"input_values": f["input_values"]})
-            labels_list.append({"input_ids": f["labels"]})
-        
-        # Pad input features
-        batch = self.processor.feature_extractor.pad(
-            input_features,
-            padding=self.padding,
+        audios = [f["audio"]["array"] for f in features]
+        texts = [f["text"] for f in features]
+
+        batch = self.processor(
+            audio=audios,
+            text=texts,
+            sampling_rate=self.processor.feature_extractor.sampling_rate,
             return_tensors="pt",
+            padding=True,
         )
-        
-        # Pad labels
-        labels_batch = self.processor.tokenizer.pad(
-            labels_list,
-            padding=self.padding,
-            return_tensors="pt",
-        )
-        
+
         # Replace padding token id with -100 for CTC loss
-        labels = labels_batch["input_ids"].masked_fill(
-            labels_batch.attention_mask.ne(1), -100
-        )
-        
-        batch["labels"] = labels
-        
+        if "labels" in batch:
+            labels = batch["labels"]
+            pad_id = self.processor.tokenizer.pad_token_id
+            if pad_id is not None:
+                labels[labels == pad_id] = -100
+            batch["labels"] = labels
+
         return batch
 
 
@@ -214,16 +201,18 @@ def main():
 
     # --------------------------
     # Preprocessing
+    # Keep raw audio + cleaned text for data collator
+    # (Parakeet processor handles feature extraction in collator)
     # --------------------------
     def prepare_batch(batch):
         # Validate text
         text = batch.get(text_col)
         if text is None or str(text).strip() == "":
-            return {"input_values": [], "labels": [], "valid": False}
+            return {"audio": None, "text": "", "valid": False}
 
         text = clean_text(text)
         if not text:
-            return {"input_values": [], "labels": [], "valid": False}
+            return {"audio": None, "text": "", "valid": False}
 
         audio = batch["audio"]
         sr = audio["sampling_rate"]
@@ -232,23 +221,12 @@ def main():
         # Duration filter
         duration = len(arr) / sr
         if duration < min_dur or duration > max_dur:
-            return {"input_values": [], "labels": [], "valid": False}
+            return {"audio": None, "text": "", "valid": False}
 
-        # Process audio with feature extractor
-        # Parakeet uses input_values (raw waveform) not log-mel spectrograms
-        inputs = processor.feature_extractor(
-            arr,
-            sampling_rate=sr,
-            return_tensors="np",
-        )
-        input_values = inputs.input_values[0]
-
-        # Tokenize text for CTC
-        labels = processor.tokenizer(text).input_ids
-
+        # Keep raw audio dict for data collator
         return {
-            "input_values": input_values,
-            "labels": labels,
+            "audio": audio,
+            "text": text,
             "valid": True,
         }
 
@@ -348,6 +326,7 @@ def main():
         # Streaming-friendly
         group_by_length=False,
         dataloader_num_workers=0,
+        remove_unused_columns=False,  # Keep audio column for data collator
         # Saving
         save_total_limit=cfg.get("save_total_limit", 2),
         load_best_model_at_end=cfg.get("load_best_model_at_end", True),
