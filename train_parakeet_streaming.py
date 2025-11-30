@@ -23,6 +23,8 @@ import regex as re
 
 # Avoid torchaudio/torchcodec conflicts inside datasets
 os.environ["DATASETS_AUDIO_BACKEND"] = "soundfile"
+# Enable CUDA debugging for illegal memory access
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 from dotenv import load_dotenv
 import wandb
@@ -72,15 +74,24 @@ class DataCollatorParakeetCTC:
     processor: Any
 
     def __call__(self, features: List[Dict]) -> Dict[str, torch.Tensor]:
-        audios = [f["audio"]["array"] for f in features]
-        texts = [f["text"] for f in features]
+        # Filter out any None audio entries
+        valid_features = [f for f in features if f.get("audio") is not None and f["audio"].get("array") is not None]
+        
+        if not valid_features:
+            raise ValueError("No valid features in batch")
+        
+        audios = [f["audio"]["array"].astype(np.float32) for f in valid_features]
+        texts = [f["text"] for f in valid_features]
 
+        # Process with explicit padding and truncation
         batch = self.processor(
             audio=audios,
             text=texts,
             sampling_rate=self.processor.feature_extractor.sampling_rate,
             return_tensors="pt",
             padding=True,
+            truncation=True,
+            max_length=448,  # Limit sequence length for stability
         )
 
         # Replace padding token id with -100 for CTC loss
@@ -88,6 +99,7 @@ class DataCollatorParakeetCTC:
             labels = batch["labels"]
             pad_id = self.processor.tokenizer.pad_token_id
             if pad_id is not None:
+                labels = labels.clone()
                 labels[labels == pad_id] = -100
             batch["labels"] = labels
 
@@ -311,9 +323,9 @@ def main():
         warmup_steps=cfg.get("warmup_steps", 500),
         max_steps=cfg.get("max_steps", 10000),
         max_grad_norm=cfg.get("max_grad_norm", 1.0),
-        # Precision
-        bf16=cfg.get("bf16", True),
-        fp16=cfg.get("fp16", False) and not cfg.get("bf16", False),
+        # Precision - use fp32 for Parakeet stability (bf16 can cause CUDA errors)
+        bf16=cfg.get("bf16", False),
+        fp16=cfg.get("fp16", False),
         # NO gradient checkpointing for Parakeet (incompatible with FastConformer)
         gradient_checkpointing=False,
         # Evaluation
