@@ -368,8 +368,8 @@ def main():
         per_device_eval_batch_size=cfg.get("per_device_eval_batch_size", 16),
         gradient_accumulation_steps=cfg.get("gradient_accumulation_steps", 2),
         eval_strategy=cfg.get("eval_strategy", "steps"),
-        eval_steps=cfg.get("eval_steps", 200),
-        save_steps=cfg.get("save_steps", 200),
+        eval_steps=cfg.get("eval_steps", 1000),
+        save_steps=cfg.get("save_steps", 1000),
         logging_steps=cfg.get("logging_steps", 25),
         learning_rate=cfg.get("learning_rate", 1e-3),  # Higher LR for adapters
         warmup_steps=cfg.get("warmup_steps", 100),
