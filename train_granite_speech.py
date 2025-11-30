@@ -443,16 +443,37 @@ def main():
 
         audio = batch["audio"]
         
-        # Handle different audio formats (including AudioDecoder from streaming)
-        if isinstance(audio, dict):
-            sr = audio.get("sampling_rate", target_sr)
-            arr = audio.get("array")
-        elif hasattr(audio, "sampling_rate") and hasattr(audio, "array"):
-            # AudioDecoder object from streaming
-            sr = audio.sampling_rate
-            arr = np.array(audio.array)
-        else:
-            print(f"Unknown audio format: {type(audio)}")
+        # Handle different audio formats
+        try:
+            if isinstance(audio, dict):
+                # Standard dict format from datasets
+                sr = audio.get("sampling_rate", target_sr)
+                arr = audio.get("array")
+            elif hasattr(audio, "__call__"):
+                # AudioDecoder - needs to be called to decode
+                decoded = audio()
+                if isinstance(decoded, dict):
+                    sr = decoded.get("sampling_rate", target_sr)
+                    arr = decoded.get("array")
+                else:
+                    sr = target_sr
+                    arr = decoded
+            elif hasattr(audio, "sampling_rate") and hasattr(audio, "array"):
+                # Object with attributes
+                sr = audio.sampling_rate
+                arr = audio.array
+            else:
+                # Try to decode if it's an AudioDecoder-like object
+                # Access the underlying data
+                if hasattr(audio, '_decode'):
+                    decoded = audio._decode()
+                    sr = decoded.get("sampling_rate", target_sr)
+                    arr = decoded.get("array")
+                else:
+                    print(f"Unknown audio format: {type(audio)}")
+                    return {"audio": None, "text": "", "prompt": "", "valid": False}
+        except Exception as e:
+            print(f"Error processing audio: {e}")
             return {"audio": None, "text": "", "prompt": "", "valid": False}
         
         if arr is None:
@@ -461,6 +482,8 @@ def main():
         # Convert to numpy if needed
         if hasattr(arr, 'numpy'):
             arr = arr.numpy()
+        elif hasattr(arr, 'cpu'):
+            arr = arr.cpu().numpy()
         arr = np.array(arr, dtype=np.float32)
 
         # Duration filter
@@ -556,8 +579,8 @@ def main():
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         
-        # Dataloader settings - more workers for speed
-        dataloader_num_workers=cfg.get("dataloader_num_workers", 8),
+        # Dataloader settings - 0 workers for streaming datasets
+        dataloader_num_workers=cfg.get("dataloader_num_workers", 0),
         dataloader_pin_memory=True,
         
         # No length grouping for speech (variable length is fine)
