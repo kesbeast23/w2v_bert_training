@@ -37,7 +37,7 @@
 	"gradient_accumulation_steps": 4,
 	"learning_rate": 3e-4,
 	"warmup_steps": 500,
-	"max_steps": 2000,
+	"max_steps": 10000,
 	"gradient_checkpointing": false,
 	"bf16": true,
 	"eval_strategy": "steps",

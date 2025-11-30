@@ -342,7 +342,7 @@ def main():
         logging_steps=cfg.get("logging_steps", 50),
         learning_rate=cfg.get("learning_rate", 5e-5),
         warmup_steps=cfg.get("warmup_steps", 500),
-        max_steps=cfg.get("max_steps", 2000),
+        max_steps=cfg.get("max_steps", 10000),
         fp16=cfg.get("fp16", False) and not cfg.get("bf16", False),
         bf16=cfg.get("bf16", False),
         gradient_checkpointing=cfg.get("gradient_checkpointing", False),

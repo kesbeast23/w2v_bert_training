@@ -2,12 +2,12 @@
 	"model_name_or_path": "facebook/w2v-bert-2.0",
 	"dataset_name": "dsfsi-anv/za-african-next-voices",
 	"dataset_config_name": [
-		"isizulu",
-		"isixhosa",
-		"sesotho",
-		"setswana",
-		"tshivenda",
-		"xitsonga"
+		"zul",
+		"xho",
+		"sot",
+		"tsn",
+		"ven",
+		"tso"
 	],
 	"eval_dataset_name": "dsfsi-anv/za-african-next-voices",
 	"eval_dataset_config_name": [
@@ -63,7 +63,7 @@
 	"gradient_accumulation_steps": 4,
 	"learning_rate": 5e-05,
 	"warmup_steps": 200,
-	"max_steps": 2000,
+	"max_steps": 10000,
 	"gradient_checkpointing": true,
 	"bf16": true,
 	"add_adapter": true,

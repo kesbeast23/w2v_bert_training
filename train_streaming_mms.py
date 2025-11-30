@@ -373,7 +373,7 @@ def main():
         logging_steps=cfg.get("logging_steps", 25),
         learning_rate=cfg.get("learning_rate", 1e-3),  # Higher LR for adapters
         warmup_steps=cfg.get("warmup_steps", 100),
-        max_steps=cfg.get("max_steps", 1000),  # Adapters need fewer steps
+        max_steps=cfg.get("max_steps", 10000),  # Adapters need fewer steps
         fp16=cfg.get("fp16", False) and not cfg.get("bf16", False),
         bf16=cfg.get("bf16", True),
         gradient_checkpointing=cfg.get("gradient_checkpointing", False),
