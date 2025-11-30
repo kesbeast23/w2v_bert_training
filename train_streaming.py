@@ -275,9 +275,9 @@ def main():
     eval_dataset = raw_eval.map(prepare_dataset, remove_columns=raw_eval.column_names).filter(filter_valid).remove_columns(["valid"])
     
     # Load model with custom config
-    from transformers import AutoConfig
+    from transformers import Wav2Vec2BertConfig
     
-    config = AutoConfig.from_pretrained(
+    config = Wav2Vec2BertConfig.from_pretrained(
         cfg["model_name_or_path"],
         vocab_size=len(processor.tokenizer),
         pad_token_id=processor.tokenizer.pad_token_id,
